@@ -99,6 +99,14 @@ You can use the following credentials to log in and test the different user port
 
 ---
 
+## 🌐 Deployment
+
+The project is live and accessible here:
+
+🔗 [SwaadBazaar Live Deployment](https://swaadbazaar-production.up.railway.app/)
+
+---
+
 ## 🚀 Future Scope
 
 * **Native Mobile App** for an even better on-the-go experience.
