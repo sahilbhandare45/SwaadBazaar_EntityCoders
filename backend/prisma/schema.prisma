@@ -1,0 +1,160 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+generator client {
+  provider = "prisma-client-js"
+}
+
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+//
+
+// SwaadBazaar - End-to-End Prisma Schema
+// Last Updated: July 27, 2025
+
+// -----------------
+// --- Enums
+// -----------------
+
+// Defines the three types of users on the platform.
+enum Role {
+  VENDOR
+  SUPPLIER
+  ADMIN
+}
+
+// Tracks the lifecycle of a group buy.
+enum GroupBuyStatus {
+  OPEN      // Actively accepting new members
+  CLOSED    // Target met or time expired, pending order
+  ORDERED   // Final order has been placed with the supplier
+  COMPLETED // Delivered and finished
+  CANCELLED // Failed to meet target
+}
+
+// -----------------
+// --- Core Models
+// -----------------
+
+// A single User model for everyone, with an 'isActive' flag for admin control.
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  name      String
+  password  String   // Hashed password
+  role      Role     @default(VENDOR)
+  isActive  Boolean  @default(true) // Admin can deactivate users
+  createdAt DateTime @default(now())
+
+  // For hyperlocal matchmaking in areas like Thane
+  latitude  Float?
+  longitude Float?
+
+  // --- Relations ---
+  supplierProfile SupplierProfile? // One-to-one for users with role: SUPPLIER
+  groupsJoined    GroupBuyMember[] // One-to-many for users with role: VENDOR
+  reviewsWritten  Review[]         // One-to-many for users with role: VENDOR
+  forecasts       Forecast[]       // One-to-many for AI forecasts
+}
+
+// Holds supplier-specific business information.
+model SupplierProfile {
+  id           Int      @id @default(autoincrement())
+  businessName String
+  isVerified   Boolean  @default(false) // Admin verifies suppliers
+  rating       Float?   // An aggregated average of review scores
+
+  // --- Relations ---
+  userId  Int      @unique // One-to-one relation to the User model
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  products Product[]
+  reviews  Review[]
+}
+
+// Raw materials offered by suppliers.
+model Product {
+  id           Int      @id @default(autoincrement())
+  name         String
+  description  String?
+  imageUrl     String?
+  unit         String   // e.g., "kg", "litre", "dozen"
+  pricePerUnit Float
+
+  // --- Relations ---
+  supplierId Int
+  supplier   SupplierProfile @relation(fields: [supplierId], references: [id])
+  groupBuys  GroupBuy[]
+  reviews    Review[]
+  forecasts  Forecast[]
+}
+
+// The core group buying feature.
+model GroupBuy {
+  id             Int            @id @default(autoincrement())
+  status         GroupBuyStatus @default(OPEN)
+  targetQuantity Float
+  expiresAt      DateTime       // Countdown timer for the group buy
+
+  // --- Relations ---
+  productId Int
+  product   Product  @relation(fields: [productId], references: [id])
+  members   GroupBuyMember[]
+}
+
+// Connects a Vendor (User) to a GroupBuy, storing their individual quantity.
+model GroupBuyMember {
+  id       Int   @id @default(autoincrement())
+  quantity Float // The amount this specific vendor wants
+
+  // --- Relations ---
+  groupBuyId Int
+  groupBuy   GroupBuy @relation(fields: [groupBuyId], references: [id], onDelete: Cascade)
+  vendorId   Int
+  vendor     User     @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  // A vendor can only join a specific group buy once.
+  @@unique([groupBuyId, vendorId])
+}
+
+
+// -----------------
+// --- Feature Models
+// -----------------
+
+// For the trust and rating system.
+model Review {
+  id        Int      @id @default(autoincrement())
+  rating    Int      // 1 to 5 stars
+  comment   String?
+  createdAt DateTime @default(now())
+
+  // --- Relations ---
+  vendorId   Int
+  vendor     User            @relation(fields: [vendorId], references: [id])
+  supplierId Int
+  supplier   SupplierProfile @relation(fields: [supplierId], references: [id])
+  productId  Int?
+  product    Product?        @relation(fields: [productId], references: [id])
+}
+
+// Stores the output from the AI/ML forecasting service.
+model Forecast {
+  id                Int      @id @default(autoincrement())
+  predictedQuantity Float
+  forecastDate      DateTime // The date for which the forecast is valid
+
+  // --- Relations ---
+  vendorId  Int
+  vendor    User    @relation(fields: [vendorId], references: [id])
+  productId Int
+  product   Product @relation(fields: [productId], references: [id])
+
+  // A vendor has one forecast per product per day.
+  @@unique([vendorId, productId, forecastDate])
+}
